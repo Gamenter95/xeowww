@@ -1,7 +1,7 @@
 import os
 import asyncio
 from flask import Flask, request, jsonify
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 # =====================
@@ -10,7 +10,6 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 BOT_TOKEN = os.getenv("BOT_TOKEN")        # Telegram bot token
 BOT_USERNAME = "XeoWalletBot"             # bot username without @
 
-bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 
 # =====================
@@ -38,7 +37,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 # =====================
-# Telegram Application (no polling)
+# Telegram Application (webhook-only)
 # =====================
 application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
@@ -49,8 +48,7 @@ application.add_handler(CommandHandler("help", help_cmd))
 # =====================
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
+    update = Update.de_json(request.get_json(force=True), application.bot)
     asyncio.run(application.process_update(update))
     return "ok", 200
 
@@ -72,7 +70,6 @@ def notify_transaction():
         if not user_id:
             return jsonify({"error": "user_id missing"}), 400
 
-        # Format message
         msg = (
             f"💰 *Transaction Alert!*\n\n"
             f"*Type:* {t_type}\n"
@@ -83,13 +80,11 @@ def notify_transaction():
             f"*New Balance:* ₹{balance}"
         )
 
-        # Mini app button
-        bot_url = f"tg://resolve?domain={BOT_USERNAME}&start=mini"
         keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("💼 View Wallet", url=bot_url)]]
+            [[InlineKeyboardButton("💼 View Wallet", url=f"tg://resolve?domain={BOT_USERNAME}&start=mini")]]
         )
 
-        asyncio.run(bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown", reply_markup=keyboard))
+        asyncio.run(application.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown", reply_markup=keyboard))
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
