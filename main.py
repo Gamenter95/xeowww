@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # Environment Variables
 # =====================
 BOT_TOKEN = os.getenv("BOT_TOKEN")        # Telegram bot token
-BOT_USERNAME = os.getenv("BOT_USERNAME")  # Bot username without @, e.g., "XeoWalletBot"
+BOT_USERNAME = "XeoWalletBot"             # bot username without @
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
@@ -38,14 +38,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 # =====================
-# Telegram Application
+# Telegram Application (no polling)
 # =====================
 application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("help", help_cmd))
 
 # =====================
-# Flask Route: Telegram Webhook
+# Telegram Webhook Route
 # =====================
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
@@ -55,7 +55,7 @@ def telegram_webhook():
     return "ok", 200
 
 # =====================
-# Flask Route: Lovable Transactions
+# Lovable Transaction Notifications
 # =====================
 @app.route("/notify_transaction", methods=["POST"])
 def notify_transaction():
