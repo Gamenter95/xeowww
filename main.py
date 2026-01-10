@@ -25,9 +25,10 @@ if not BOT_TOKEN:
 app = Flask(__name__)
 
 # =====================
-# Global Bot Application
+# Global Bot Application & Bot Instance
 # =====================
 telegram_app = None
+bot_instance = Bot(token=BOT_TOKEN)
 
 # =====================
 # Telegram Commands
@@ -47,15 +48,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /help command"""
     msg = (
-        "📝 <b>Available Commands:</b>\n"
+        "📝 Available Commands:\n"
         "/start - Start the bot\n"
         "/help - Show this help message\n\n"
-        "📡 Channel: [Xeo\\_Wallet](https://t.me/Xeo_Wallet)\n"
+        "📡 Channel: t.me/Xeo_Wallet\n"
         "👨‍💻 Developer: @Gamenter\n"
         "🤖 Bot: @XeoWalletBot\n\n"
         "All wallet transactions will be notified automatically here."
     )
-    await update.message.reply_text(msg, parse_mode="HTML")
+    await update.message.reply_text(msg)
     logger.info(f"User {update.effective_user.id} requested help")
 
 # =====================
@@ -76,22 +77,15 @@ async def send_transaction_notification_async(data: dict):
         return False
     
     try:
-        # Escape special characters for MarkdownV2
-        def escape_md(text):
-            special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-            for char in special_chars:
-                text = str(text).replace(char, f'\\{char}')
-            return text
-        
-        # Message formatting
+        # Simple message without MarkdownV2 to avoid parsing issues
         msg = (
-            f"💰 <b>Transaction Alert!</b>\n\n"
-            f"<b>Type:</b> {t_type}\n"
-            f"<b>Amount:</b> ₹{amount}\n"
-            f"<b>Status:</b> {status}\n"
-            f"<b>Sender:</b> {sender}\n"
-            f"<b>Comment:</b> {comment}\n"
-            f"<b>New Balance:</b> ₹{balance}"
+            f"💰 Transaction Alert!\n\n"
+            f"Type: {t_type}\n"
+            f"Amount: ₹{amount}\n"
+            f"Status: {status}\n"
+            f"Sender: {sender}\n"
+            f"Comment: {comment}\n"
+            f"New Balance: ₹{balance}"
         )
         
         # Inline button to view wallet
@@ -99,19 +93,14 @@ async def send_transaction_notification_async(data: dict):
             [InlineKeyboardButton("💼 View Wallet", url=f"https://t.me/XeoWalletBot?start=wallet_{user_id}")]
         ])
         
-        # Send the message using the global bot instance
-        if telegram_app:
-            await telegram_app.bot.send_message(
-                chat_id=user_id,
-                text=msg,
-                parse_mode="HTML",
-                reply_markup=keyboard
-            )
-            logger.info(f"Transaction notification sent to user {user_id}")
-            return True
-        else:
-            logger.error("Telegram app not initialized")
-            return False
+        # Send the message using the shared bot instance
+        await bot_instance.send_message(
+            chat_id=user_id,
+            text=msg,
+            reply_markup=keyboard
+        )
+        logger.info(f"Transaction notification sent to user {user_id}")
+        return True
             
     except Exception as e:
         logger.error(f"Error sending notification to user {user_id}: {str(e)}")
