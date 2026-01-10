@@ -171,20 +171,39 @@ def notify_transaction():
 # =====================
 # Run Telegram Bot
 # =====================
-def run_telegram_bot():
-    """Initialize and run the Telegram bot"""
+async def run_bot_async():
+    """Run the bot with async/await"""
     global telegram_app
     
+    telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    # Add command handlers
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("help", help_cmd))
+    
+    logger.info("Starting Telegram bot polling...")
+    
+    # Initialize and start polling
+    await telegram_app.initialize()
+    await telegram_app.start()
+    await telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    
+    # Keep the bot running
     try:
-        telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
-        
-        # Add command handlers
-        telegram_app.add_handler(CommandHandler("start", start))
-        telegram_app.add_handler(CommandHandler("help", help_cmd))
-        
-        logger.info("Starting Telegram bot polling...")
-        telegram_app.run_polling(allowed_updates=Update.ALL_TYPES)
-        
+        while True:
+            await asyncio.sleep(1)
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Stopping bot...")
+        await telegram_app.updater.stop()
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+
+def run_telegram_bot():
+    """Initialize and run the Telegram bot in a new event loop"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_bot_async())
     except Exception as e:
         logger.error(f"Error running Telegram bot: {str(e)}")
         raise
