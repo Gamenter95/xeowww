@@ -47,7 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /help command"""
     msg = (
-        "📝 *Available Commands:*\n"
+        "📝 <b>Available Commands:</b>\n"
         "/start - Start the bot\n"
         "/help - Show this help message\n\n"
         "📡 Channel: [Xeo\\_Wallet](https://t.me/Xeo_Wallet)\n"
@@ -55,7 +55,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 Bot: @XeoWalletBot\n\n"
         "All wallet transactions will be notified automatically here."
     )
-    await update.message.reply_text(msg, parse_mode="MarkdownV2")
+    await update.message.reply_text(msg, parse_mode="HTML")
     logger.info(f"User {update.effective_user.id} requested help")
 
 # =====================
@@ -85,13 +85,13 @@ async def send_transaction_notification_async(data: dict):
         
         # Message formatting
         msg = (
-            f"💰 *Transaction Alert\\!*\n\n"
-            f"*Type:* {escape_md(t_type)}\n"
-            f"*Amount:* ₹{escape_md(amount)}\n"
-            f"*Status:* {escape_md(status)}\n"
-            f"*Sender:* {escape_md(sender)}\n"
-            f"*Comment:* {escape_md(comment)}\n"
-            f"*New Balance:* ₹{escape_md(balance)}"
+            f"💰 <b>Transaction Alert!</b>\n\n"
+            f"<b>Type:</b> {t_type}\n"
+            f"<b>Amount:</b> ₹{amount}\n"
+            f"<b>Status:</b> {status}\n"
+            f"<b>Sender:</b> {sender}\n"
+            f"<b>Comment:</b> {comment}\n"
+            f"<b>New Balance:</b> ₹{balance}"
         )
         
         # Inline button to view wallet
@@ -104,7 +104,7 @@ async def send_transaction_notification_async(data: dict):
             await telegram_app.bot.send_message(
                 chat_id=user_id,
                 text=msg,
-                parse_mode="MarkdownV2",
+                parse_mode="HTML",
                 reply_markup=keyboard
             )
             logger.info(f"Transaction notification sent to user {user_id}")
