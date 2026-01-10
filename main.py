@@ -1,43 +1,34 @@
 import os
 import asyncio
 from flask import Flask, request, jsonify
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, ContextTypes, Application
 
 # =====================
 # Environment Variables
 # =====================
-BOT_TOKEN = os.getenv("BOT_TOKEN")        # Your bot token
-BOT_USERNAME = "XeoWalletBot"             # Bot username without @
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_USERNAME = "XeoWalletBot"  # your bot username without @
 
 app = Flask(__name__)
+bot = Bot(token=BOT_TOKEN)
 
 # =====================
-# Telegram Handlers
+# Telegram Command Handlers
 # =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    msg = (
-        f"👋 Hello {user.first_name}!\n\n"
-        "Welcome to XeoWallet Bot.\n"
-        "You will receive notifications for all your wallet transactions here.\n\n"
-        "Use /help to see available commands."
+    await update.message.reply_text(
+        f"👋 Hello {user.first_name}!\nWelcome to XeoWallet Bot.\nUse /help to see commands."
     )
-    await update.message.reply_text(msg)
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "📝 *Available Commands & Contacts:*\n\n"
-        "/start - Start the bot\n"
-        "/help - Show this message\n\n"
-        "*Channel:* XeoWallet\n"
-        "*Developer:* @GAMENTER\n\n"
-        "All wallet transactions will be notified automatically."
+    await update.message.reply_text(
+        "📝 Commands:\n/start - Start bot\n/help - Show this help\n\nDeveloper: @GAMENTER",
     )
-    await update.message.reply_text(msg, parse_mode="Markdown")
 
 # =====================
-# Telegram Application
+# Application for PTB 20+
 # =====================
 application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
@@ -49,12 +40,12 @@ application.add_handler(CommandHandler("help", help_cmd))
 @app.route(f"/webhook/{BOT_TOKEN}", methods=["POST"])
 def telegram_webhook():
     data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
+    update = Update.de_json(data, bot)
     asyncio.run(application.process_update(update))
     return "ok", 200
 
 # =====================
-# Lovable Transaction Notifications
+# Transaction Notification Endpoint
 # =====================
 @app.route("/notify_transaction", methods=["POST"])
 def notify_transaction():
@@ -71,7 +62,6 @@ def notify_transaction():
         if not user_id:
             return jsonify({"error": "user_id missing"}), 400
 
-        # Format transaction message
         msg = (
             f"💰 *Transaction Alert!*\n\n"
             f"*Type:* {t_type}\n"
@@ -82,14 +72,12 @@ def notify_transaction():
             f"*New Balance:* ₹{balance}"
         )
 
-        # Mini app button
-        bot_url = f"tg://resolve?domain={BOT_USERNAME}&start=mini"
+        # Inline button
         keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("💼 View Wallet", url=bot_url)]]
+            [[InlineKeyboardButton("💼 View Wallet", url=f"tg://resolve?domain={BOT_USERNAME}&start=mini")]]
         )
 
-        # Send notification
-        asyncio.run(application.bot.send_message(
+        asyncio.run(bot.send_message(
             chat_id=user_id,
             text=msg,
             parse_mode="Markdown",
@@ -101,7 +89,7 @@ def notify_transaction():
         return jsonify({"error": str(e)}), 500
 
 # =====================
-# Run Flask
+# Keep Render Alive
 # =====================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
