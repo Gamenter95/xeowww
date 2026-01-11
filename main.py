@@ -73,6 +73,13 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
     logger.info(f"User {update.effective_user.id} requested help")
 
+async def id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /help command"""
+    msg = f"<b>{update.effective_user.id}</b>"
+    
+    await update.message.reply_text(msg, parse_mode="HTML")
+    logger.info(f"User {update.effective_user.id} want to see his id!")
+    
 # =====================
 # Transaction Notification Function
 # =====================
@@ -205,6 +212,7 @@ async def run_bot_async():
     # Add command handlers
     telegram_app.add_handler(CommandHandler("start", start))
     telegram_app.add_handler(CommandHandler("help", help_cmd))
+    telegram_app.add_handler(CommandHandler("id", id_cmd))
     
     logger.info("Starting Telegram bot polling...")
     
