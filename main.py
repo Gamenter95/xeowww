@@ -19,72 +19,124 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is not set!")
 
+MINIAPP_URL = "https://xeowallet.vercel.app"
+
 # =====================
 # Flask App Setup
 # =====================
 app = Flask(__name__)
 
 # =====================
-# Global Bot Application & Bot Instance
+# Global Bot
 # =====================
-telegram_app = None
 bot_instance = Bot(token=BOT_TOKEN)
+telegram_app = None
 
-# =====================
-# Telegram Commands
-# =====================
+# =========================================================
+# 🧠 CHANNEL CHECK LOGIC (with bot admin detection)
+# =========================================================
+
+async def check_user_in_channel(user_id: int, channel: str):
+    """
+    Returns:
+        "joined"
+        "not_joined"
+        "bot_not_admin"
+        "error"
+    """
+    try:
+        member = await bot_instance.get_chat_member(
+            chat_id=channel,
+            user_id=user_id
+        )
+
+        if member.status in ["member", "administrator", "creator"]:
+            return "joined"
+        return "not_joined"
+
+    except Exception as e:
+        err = str(e).lower()
+
+        if (
+            "chat not found" in err
+            or "not enough rights" in err
+            or "have no rights" in err
+            or "forbidden" in err
+        ):
+            logger.warning(f"Bot lacks access to {channel}")
+            return "bot_not_admin"
+
+        logger.warning(f"Channel check failed for {channel}: {e}")
+        return "error"
+
+
+async def verify_user_channels(user_id: int, channels: list):
+    not_joined = []
+    bot_missing = []
+
+    for ch in channels:
+        result = await check_user_in_channel(user_id, ch)
+
+        if result == "not_joined":
+            not_joined.append(ch)
+        elif result == "bot_not_admin":
+            bot_missing.append(ch)
+
+    return not_joined, bot_missing
+
+# =========================================================
+# 🤖 TELEGRAM COMMANDS
+# =========================================================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /start command"""
     user = update.effective_user
+
     msg = (
         f"👋 <b>Hello {user.first_name}!</b>\n\n"
         "Welcome to <b>Xeo Wallet Bot</b>. 💼\n"
         "You will receive notifications for all your wallet transactions here.\n\n"
         "Use /help to see available commands."
     )
-    
-    # Create keyboard with Open Wallet button that opens mini app
+
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💼 Open Wallet", web_app={"url": "https://xeow.vercel.app/dashboard"})]
+        [InlineKeyboardButton("💼 Open Wallet", web_app={"url": MINIAPP_URL})]
     ])
-    
+
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
-    logger.info(f"User {user.id} started the bot")
+
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /help command"""
     msg = (
         "📝 <b>Available Commands:</b>\n\n"
         "• /start - Start the bot\n"
-        "• /help - Show this help message\n\n"
+        "• /help - Show this help message\n"
+        "• /id - Get your Telegram ID\n\n"
         "━━━━━━━━━━━━━━━━\n"
-        "📡 <b>Channel:</b> @Xeo_Wallet\n"
-        "👨‍💻 <b>Developer:</b> @Gamenter\n"
-        "🤖 <b>Bot:</b> @XeoWalletBot\n"
+        "📡 Channel: @Xeo_Wallet\n"
+        "👨‍💻 Developer: @Gamenter\n"
+        "🤖 Bot: @XeoWalletBot\n"
         "━━━━━━━━━━━━━━━━\n\n"
         "💡 All wallet transactions will be notified automatically here."
     )
-    
-    # Create keyboard with Open Wallet button
+
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💼 Open Wallet", web_app={"url": "https://xeow.vercel.app/dashboard"})]
+        [InlineKeyboardButton("💼 Open Wallet", web_app={"url": MINIAPP_URL})]
     ])
-    
+
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
-    logger.info(f"User {update.effective_user.id} requested help")
+
 
 async def id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /help command"""
-    msg = f"<b>{update.effective_user.id}</b>"
-    
-    await update.message.reply_text(msg, parse_mode="HTML")
-    logger.info(f"User {update.effective_user.id} want to see his id!")
-    
-# =====================
-# Transaction Notification Function
-# =====================
+    await update.message.reply_text(
+        f"<b>{update.effective_user.id}</b>",
+        parse_mode="HTML"
+    )
+
+# =========================================================
+# 💰 TRANSACTION NOTIFICATIONS
+# =========================================================
+
 async def send_transaction_notification_async(data: dict):
-    """Send transaction notification asynchronously"""
     user_id = data.get("user_id")
     t_type = data.get("type", "Unknown")
     amount = data.get("amount", "0")
@@ -92,34 +144,26 @@ async def send_transaction_notification_async(data: dict):
     sender = data.get("sender", "N/A")
     comment = data.get("comment", "No comment")
     balance = data.get("balance", "0")
-    
+
     if not user_id:
         logger.error("Missing user_id in transaction data")
         return False
-    
+
     try:
-        # Determine emoji based on transaction type and status
         if status.lower() == "success":
-            if t_type.lower() == "send_credit":
-                status_emoji = "✅"
-                type_emoji = "🏧"
-            elif t_type.lower() == "api_debit":
-                status_emoji = "✅"
+            if t_type.lower() in ["send_credit", "api_debit"]:
                 type_emoji = "🏧"
             elif t_type.lower() == "addfund":
-                status_emoji = "✅"
                 type_emoji = "📥"
             elif t_type.lower() == "withdraw":
-                status_emoji = "✅"
                 type_emoji = "📤"
             else:
-                status_emoji = "✅"
                 type_emoji = "⭐"
+            status_emoji = "✅"
         else:
             status_emoji = "❌"
             type_emoji = "⚠️"
-        
-        # Formatted message with HTML
+
         msg = (
             f"💰 <b>Transaction Alert!</b>\n\n"
             f"{type_emoji} <b>Type:</b> {t_type}\n"
@@ -127,130 +171,139 @@ async def send_transaction_notification_async(data: dict):
             f"{status_emoji} <b>Status:</b> {status}\n"
             f"👤 <b>Sender:</b> {sender}\n"
             f"💬 <b>Comment:</b> {comment}\n\n"
-            f"💼 <b>New Balance:</b> ₹{balance}\n"
+            f"💼 <b>New Balance:</b> ₹{balance}"
         )
-        
-        # Inline button to open mini app
+
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💼 Open Wallet", web_app={"url": "https://xeow.vercel.app/dashboard"})]
+            [InlineKeyboardButton("💼 Open Wallet", web_app={"url": MINIAPP_URL})]
         ])
-        
-        # Send the message using the shared bot instance
+
         await bot_instance.send_message(
             chat_id=user_id,
             text=msg,
             parse_mode="HTML",
             reply_markup=keyboard
         )
-        logger.info(f"Transaction notification sent to user {user_id}")
+
         return True
-            
+
     except Exception as e:
-        logger.error(f"Error sending notification to user {user_id}: {str(e)}")
+        logger.error(f"Error sending notification: {e}")
         return False
+
 
 def send_transaction_notification(data: dict):
-    """Wrapper to run async notification in event loop"""
-    try:
-        # Create new event loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(send_transaction_notification_async(data))
-        loop.close()
-        return result
-    except Exception as e:
-        logger.error(f"Error in notification wrapper: {str(e)}")
-        return False
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(
+        send_transaction_notification_async(data)
+    )
+    loop.close()
+    return result
 
-# =====================
-# Flask Routes
-# =====================
+# =========================================================
+# 🌐 FLASK ROUTES
+# =========================================================
+
 @app.route("/", methods=["GET"])
 def home():
-    """Health check endpoint"""
     return jsonify({
         "status": "online",
-        "service": "Xeo Wallet Bot",
-        "version": "1.0"
+        "service": "Xeo Wallet Bot"
     })
+
 
 @app.route("/notify_transaction", methods=["POST"])
 def notify_transaction():
-    """Endpoint to receive transaction notifications from Lovable website"""
     data = request.json
-    
+
     if not data:
         return jsonify({"error": "No data provided"}), 400
-    
-    # Validate required fields
+
     required_fields = ["user_id", "type", "amount", "status"]
-    missing_fields = [field for field in required_fields if field not in data]
-    
-    if missing_fields:
-        return jsonify({
-            "error": f"Missing required fields: {', '.join(missing_fields)}"
-        }), 400
-    
-    try:
-        # Send notification in a separate thread to avoid blocking
-        Thread(target=send_transaction_notification, args=(data,), daemon=True).start()
-        logger.info(f"Transaction notification queued for user {data.get('user_id')}")
-        return jsonify({"ok": True, "message": "Notification queued"})
-    except Exception as e:
-        logger.error(f"Error queueing notification: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    missing = [f for f in required_fields if f not in data]
 
-# =====================
-# Run Telegram Bot
-# =====================
-async def run_bot_async():
-    """Run the bot with async/await"""
-    global telegram_app
-    
-    telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    # Add command handlers
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("help", help_cmd))
-    telegram_app.add_handler(CommandHandler("id", id_cmd))
-    
-    logger.info("Starting Telegram bot polling...")
-    
-    # Initialize and start polling
-    await telegram_app.initialize()
-    await telegram_app.start()
-    await telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-    
-    # Keep the bot running
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Stopping bot...")
-        await telegram_app.updater.stop()
-        await telegram_app.stop()
-        await telegram_app.shutdown()
+    if missing:
+        return jsonify({"error": f"Missing: {', '.join(missing)}"}), 400
 
-def run_telegram_bot():
-    """Initialize and run the Telegram bot in a new event loop"""
+    Thread(
+        target=send_transaction_notification,
+        args=(data,),
+        daemon=True
+    ).start()
+
+    return jsonify({"ok": True})
+
+
+# 🔥 FORCE-SUB CHECK (LIFAFA)
+
+@app.route("/check_channels", methods=["POST"])
+def check_channels():
+    data = request.json
+    user_id = data.get("user_id")
+    channels = data.get("channels")
+
+    if not user_id or not channels:
+        return jsonify({"error": "Missing user_id or channels"}), 400
+
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_bot_async())
-    except Exception as e:
-        logger.error(f"Error running Telegram bot: {str(e)}")
-        raise
 
-# =====================
-# Main Entry Point
-# =====================
+        not_joined, bot_missing = loop.run_until_complete(
+            verify_user_channels(user_id, channels)
+        )
+        loop.close()
+
+        # 🚨 bot not admin case
+        if bot_missing:
+            return jsonify({
+                "ok": False,
+                "bot_error": True,
+                "bot_missing_channels": bot_missing,
+                "message": "Bot is not admin in some channels"
+            })
+
+        # ✅ normal result
+        return jsonify({
+            "ok": True,
+            "joined": len(not_joined) == 0,
+            "missing_channels": not_joined
+        })
+
+    except Exception as e:
+        logger.error(f"Channel verify error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# =========================================================
+# 🚀 RUN TELEGRAM BOT
+# =========================================================
+
+async def run_bot_async():
+    global telegram_app
+
+    telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    telegram_app.add_handler(CommandHandler("start", start))
+    telegram_app.add_handler(CommandHandler("help", help_cmd))
+    telegram_app.add_handler(CommandHandler("id", id_cmd))
+
+    logger.info("Bot started")
+
+    await telegram_app.initialize()
+    await telegram_app.start()
+    await telegram_app.run_polling()
+
+
+def run_telegram_bot():
+    asyncio.run(run_bot_async())
+
+# =========================================================
+# 🏁 MAIN
+# =========================================================
+
 if __name__ == "__main__":
-    # Start Telegram bot in a separate daemon thread
-    bot_thread = Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-    logger.info("Telegram bot thread started")
-    
-    # Run Flask app
+    Thread(target=run_telegram_bot, daemon=True).start()
+
     port = int(os.environ.get("PORT", 5000))
-    logger.info(f"Starting Flask app on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
